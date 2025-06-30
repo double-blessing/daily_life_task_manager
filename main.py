@@ -169,7 +169,6 @@ def main():
     """Main application function"""
     st.set_page_config(
         page_title="Daily Life Task Manager",
-        page_icon="✅",
         layout="wide",
         initial_sidebar_state="expanded"
     )
@@ -183,7 +182,7 @@ def main():
     </style>
     """, unsafe_allow_html=True)
 
-    st.title("✅ Daily Life Task Manager")
+    st.title("Daily Life Task Manager")
     st.markdown("#### Your intelligent, context-aware productivity companion")
 
     init_db()
