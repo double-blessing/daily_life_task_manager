@@ -4,7 +4,6 @@ import sqlite3
 import os
 import plotly.express as px
 
-# Corrected imports from your new package
 from services.task import Task
 from services.priority_engine import PriorityEngine
 from services.context_analyzer import ContextAnalyzer
@@ -15,13 +14,14 @@ priority_engine = PriorityEngine()
 context_analyzer = ContextAnalyzer()
 procrastination_defeater = ProcrastinationDefeater()
 
-# Ensure data directory exists
+
 os.makedirs("data", exist_ok=True)
 
 def init_db():
     """Initialize the database and create tables if they don't exist"""
     conn = sqlite3.connect('data/daily_life_task_manager.db')
     c = conn.cursor()
+    # This schema with energy_level
     c.execute('''CREATE TABLE IF NOT EXISTS tasks
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
                  title TEXT NOT NULL,
@@ -92,56 +92,67 @@ def display_task_dashboard(energy, time, location):
 
     # Add new task form
     with st.form("new_task_form", clear_on_submit=True):
+        st.subheader("➕ Add a New Task")
         col1, col2 = st.columns(2)
         with col1:
             title = st.text_input("Task Title*", help="Required field")
             description = st.text_area("Description")
         with col2:
-            due_date_input = st.date_input("Due Date", datetime.now() + timedelta(days=1))
-            base_priority = st.slider("Base Priority", 1, 10, 5)
-            time_estimate = st.number_input("Time Estimate (minutes)", 5, 240, 30)
+            due_date_input = st.date_input("Due Date", datetime.now().date() + timedelta(days=1))
+            base_priority = st.slider("Base Priority (1-10)", 1, 10, 5)
+            time_estimate = st.number_input("Time Estimate (minutes)", min_value=5, max_value=240, value=30, step=5)
+            energy_level_input = st.slider("Required Energy (1-10)", 1, 10, 5)
+
 
         if st.form_submit_button("Add Task"):
             if title:
+                # Convert date object to datetime object for consistency
+                due_date_dt = datetime.combine(due_date_input, datetime.min.time())
                 dynamic_priority = priority_engine.calculate_dynamic_priority(
-                    base_priority, due_date_input, time_estimate
+                    base_priority, due_date_dt, time_estimate
                 )
-                Task.create(conn, title, description, due_date_input,
-                          base_priority, dynamic_priority, time_estimate)
+                # --- FIX: Pass the energy_level_input to the create function ---
+                Task.create(conn, title, description, due_date_dt,
+                          base_priority, dynamic_priority, time_estimate, energy_level_input)
                 st.success("Task added successfully!")
                 st.rerun()
             else:
                 st.warning("Please enter a task title")
 
     # Display tasks
-    st.subheader("Your Context-Optimized Task List")
+    st.subheader("✅ Your Context-Optimized Task List")
     tasks = Task.get_all(conn)
 
     if not tasks:
         st.info("No tasks yet! Add your first task above.")
     else:
+        # The context analyzer now needs the full Task object
         ranked_tasks = context_analyzer.rank_tasks(tasks, energy, time, location)
 
-        for task_data in ranked_tasks:
-            display_task_card(conn, task_data, energy, time)
+        for task in ranked_tasks:
+            display_task_card(conn, task, energy, time)
 
     conn.close()
 
-def display_task_card(conn, task_data, energy, time):
+def display_task_card(conn, task, energy, time):
     """Display an individual task card"""
-    task = Task(*task_data) # Create a Task object from the tuple
+    # No need to create a new object, 'task' is already a Task instance
     with st.container():
         col1, col2 = st.columns([0.8, 0.2])
 
         with col1:
             # Dynamic priority indicator
             priority_color = "#ff4b4b" if task.dynamic_priority > 7 else "#ffa700" if task.dynamic_priority > 4 else "#00cc66"
-            due_date_str = task.due_date.strftime('%Y-%m-%d') if task.due_date else 'No deadline'
+            
+            # Safely format due_date
+            due_date_str = task.due_date.strftime('%Y-%m-%d') if isinstance(task.due_date, datetime) else 'No deadline'
 
             st.markdown(
-                f"<h3 style='color:{priority_color}'>"
+                f"<h3 style='color:{priority_color};'>"
                 f"{'✅ ' if task.completed else ''}{task.title}</h3>"
-                f"<p><b>Priority:</b> {task.dynamic_priority:.1f}</p>"
+                f"<p><b>Priority:</b> {task.dynamic_priority:.1f} | "
+                f"<b>Energy Needed:</b> {task.energy_level} | "
+                f"<b>Time:</b> {task.time_estimate} min</p>"
                 f"<p><b>Due:</b> {due_date_str}</p>"
                 f"<p>{task.description or 'No description'}</p>",
                 unsafe_allow_html=True
@@ -176,9 +187,9 @@ def main():
     # Custom CSS
     st.markdown("""
     <style>
-        .st-emotion-cache-1y4p8pa {padding: 2rem 1rem 10rem;}
         .stButton button {width: 100%;}
-        .task-card {border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;}
+        .st-emotion-cache-1y4p8pa { padding-top: 2rem; }
+        .st-emotion-cache-z5fcl4 { padding-top: 2rem; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -190,9 +201,9 @@ def main():
     # User context input
     with st.sidebar:
         st.header("⚡ Your Current Context")
-        current_energy = st.slider("Energy Level (1-10)", 1, 10, 7)
-        available_time = st.number_input("Available Time (minutes)", 5, 240, 30)
-        current_location = st.selectbox("Location", ["Home", "Office", "Commuting", "Other"])
+        current_energy = st.slider("Your Energy Level (1-10)", 1, 10, 7)
+        available_time = st.number_input("Available Time (minutes)", min_value=5, max_value=300, value=60, step=5)
+        current_location = st.selectbox("Your Location", ["Home", "Office", "Commuting", "Other"])
 
     # Main app sections
     tab1, tab2, tab3 = st.tabs(["📋 Task Dashboard", "📊 Analytics", "🚀 Productivity Tools"])
